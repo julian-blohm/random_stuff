@@ -106,15 +106,3 @@ Use:
 sudo iptables -I INPUT -p tcp --dport <PORT> -j ACCEPT
 sudo service iptables save
 ```
-
----
-
-## Conclusion
-When Apache is not reachable on a custom port:
-1. Verify service is running.  
-2. Resolve port conflicts.  
-3. Open firewall rules (broadly, for lab grading).  
-4. Adjust SELinux if enforcing.  
-5. Provide valid content.  
-
-This sequence should resolve most connectivity issues and ensure tasks pass automated grading.
