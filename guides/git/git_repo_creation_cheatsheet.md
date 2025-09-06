@@ -42,7 +42,13 @@ git init --bare /opt/myrepo.git
 
 ```bash
 # Developer clones from bare repo
-git clone user@server:/opt/myrepo.git
+mkdir /usr/src/mylocalrepo
+cd /usr/src/mylocalrepo
+sudo git clone user@server:/opt/myrepo.git
+
+# Check the Repo (optional)
+git status    # should show: nothing to commit, working tree clean
+git remote -v # should point to /opt/myrepo.git
 
 # Make changes, commit, then push back
 git add .
