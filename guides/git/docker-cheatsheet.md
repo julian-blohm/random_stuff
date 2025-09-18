@@ -1,16 +1,5 @@
 # Docker Day‑to‑Day Cheat Sheet
 
-## 0) Install & start Service
-```bash
-# RHEL/CentOS
-sudo yum install docker -y
-sudo systemctl enable --now docker
-
-docker --version && docker info   # verify
-```
-
----
-
 ## 1) Images & Containers Basics (38, 36, 43)
 ```bash
 docker pull nginx:latest                      # (38) pull image
