@@ -2,7 +2,7 @@
 
 ## 1) Images & Containers Basics
 ```bash
-docker pull nginx:latest                      # (38) pull image
+docker pull nginx:latest                      # pull image
 docker images                                 # list images
 docker image tag <image-name> <new-image-name>:<tag>  # (re-)tag existing image
 
