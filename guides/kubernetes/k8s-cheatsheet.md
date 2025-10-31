@@ -77,14 +77,26 @@ spec:
         ports: [{ containerPort: 80 }]
 ```
 ```bash
-kubectl apply -f deploy.yaml
+# deploy 
+kubectl apply -f deploy.yaml    
+# check status
 kubectl rollout status deploy/web-deploy
-# Update image (51):
+
+# Update image:
 kubectl set image deploy/web-deploy web=nginx:1.25.3-alpine
+# Get history of changes (if change cause info is used)
 kubectl rollout history deploy/web-deploy
-# Roll back (52):
+
+# Roll back to earlier version:
 kubectl rollout undo deploy/web-deploy                 # to previous
 kubectl rollout undo deploy/web-deploy --to-revision=2 # to specific
+```
+
+**Imperative way using command**
+```bash
+kubectl create deploy web-deploy --image=nginx:1.25-alpine --replicas=3
+kubectl set image deploy/web-deploy web=nginx:1.25.3-alpine  # rolling update
+kubectl rollout undo deploy/web-deploy
 ```
 
 ---
