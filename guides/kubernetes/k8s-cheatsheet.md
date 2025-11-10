@@ -56,7 +56,7 @@ kubectl port-forward pod/demo-pod 8080:80
 
 ---
 
-## 2) Deployment (49) + Rollout (51, 52)
+## 2) Deployment & Rollout
 **deploy.yaml**
 ```yaml
 apiVersion: apps/v1
@@ -101,7 +101,8 @@ kubectl rollout undo deploy/web-deploy
 
 ---
 
-## 3) Resource Requests/Limits (50)
+## 3) Resource Requests/Limits
+**Declarativ** (add under container spec)
 ```yaml
 resources:
   requests:
@@ -111,7 +112,12 @@ resources:
     cpu: "500m"
     memory: "256Mi"
 ```
-Add under the container spec.
+**Imperative**
+```bash
+kubectl set resources deploy/web-deploy \
+  --requests=cpu=100m,memory=128Mi \
+  --limits=cpu=500m,memory=256Mi
+```
 
 ---
 
