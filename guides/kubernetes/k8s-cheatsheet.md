@@ -22,12 +22,14 @@ kubectl exec -it <pod> -- sh                # exec into a pod (or bash)
 
 kubectl apply -f file.yaml                  # create/update from manifest
 kubectl delete -f file.yaml                 # delete from manifest
+
+kubectl cp -r /local/folder <pod-name>:/path/in/container # copy files into container/pod; 
+# use -c with container name to copy local file only to that specific container
 ```
 
 ---
 
 ## 1) Pod Creations
-
 **Declarative way using pod.yaml**
 ```yaml
 apiVersion: v1
@@ -150,6 +152,11 @@ containers:
 - name: b
   volumeMounts: [{ name: shared, mountPath: /work }]
 ```
+```bash
+
+```
+
+
 ### VolumeMounts issue checklist (53)
 - `volumeMounts[].name` **must equal** a `volumes[].name`.  
 - `mountPath` is absolute and unique per container.  
