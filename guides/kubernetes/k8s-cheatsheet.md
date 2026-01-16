@@ -143,27 +143,25 @@ spec:
 
 ---
 
-## 5) Volumes (53, 54, 60)
-### EmptyDir (shared between containers in a Pod) (54)
+## 5) Volumes
+### EmptyDir (shared between containers in a Pod)
 ```yaml
-volumes: [{ name: shared, emptyDir: {} }]
-containers:
-- name: a
-  volumeMounts: [{ name: shared, mountPath: /data }]
-- name: b
-  volumeMounts: [{ name: shared, mountPath: /work }]
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volume-share-nautilus
+spec:
+  volumes: [{ name: volume-share, emptyDir: {} }]
+  containers:
+    - name: volume-container-nautilus-1
+      image: fedora:latest
+      command: ["sleep", "infinity"]
+      volumeMounts: [{ name: volume-share, mountPath: /tmp/beta }]
+    - name: volume-container-nautilus-2
+      image: fedora:latest
+      command: ["sleep", "infinity"]
+      volumeMounts: [{ name: volume-share, mountPath: /tmp/demo }]
 ```
-```bash
-
-```
-
-
-### VolumeMounts issue checklist (53)
-- `volumeMounts[].name` **must equal** a `volumes[].name`.  
-- `mountPath` is absolute and unique per container.  
-- If using `hostPath`, ensure the path exists on the node.  
-- Check for typos, case sensitivity, and indenting.  
-- See events: `kubectl describe pod <pod>`.
 
 ### PersistentVolume + PVC (60)
 **pv.yaml**
