@@ -15,6 +15,7 @@ kubectl get nodes                           # list nodes
 kubectl get all                             # common workload objects
 kubectl get pods,deploy,svc,cm,secret,pvc,pv  # specific kinds
 kubectl get pods -l app=<lbl> -o wide       # filter by label
+kubectl get pod <pod-name> -o yaml > /<path>/output-file.yaml # export pod manifest
 
 kubectl describe <kind> <name>              # detailed object view/events
 kubectl logs <pod> [-c <container>] -f      # stream logs
