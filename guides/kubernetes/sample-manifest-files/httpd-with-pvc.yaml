@@ -7,7 +7,7 @@ spec:
     storage: 3Gi
   accessModes:
     - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain  # Options: Retain, Recycle, Delete
+  persistentVolumeReclaimPolicy: Retain
   storageClassName: manual  
   hostPath:
     path: /mnt/itadmin
