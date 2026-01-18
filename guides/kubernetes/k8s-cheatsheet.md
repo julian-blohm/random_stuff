@@ -28,6 +28,19 @@ kubectl cp -r /local/folder <pod-name>:/path/in/container # copy files into cont
 # use -c with container name to copy local file only to that specific container
 ```
 
+Troubleshoot Deployments
+```bash
+kubectl get deploy,rs,pod -o wide
+kubectl describe deploy <name>
+kubectl describe rs -l app=<label>
+kubectl describe pod <pod>
+kubectl logs <pod> [-c container]
+kubectl get events --sort-by=.metadata.creationTimestamp
+kubectl rollout status deploy/<name>
+kubectl rollout undo deploy/<name>
+```
+Common issues: bad image, bad command/args, wrong selectors, port conflicts, PVC pending/bound, issues with volume mounts.
+
 ---
 
 ## 1) Pod Creations
@@ -214,6 +227,12 @@ Create secrets:
 kubectl create secret generic db-cred   --from-literal=USER=appuser   --from-literal=PASSWORD='S3cureP@ss!'
 ```
 
+Mount secret as file:
+```yaml
+volumes: [{ name: secretvol, secret: { secretName: db-cred } }]
+volumeMounts: [{ name: secretvol, mountPath: /secrets, readOnly: true }]
+```
+
 Use envs and print them:
 ```yaml
 apiVersion: v1
@@ -236,11 +255,7 @@ spec:
       value: "Datacenter"
     command: ["/bin/sh", "-c", 'echo "$(GREETING) $(COMPANY) $(GROUP)"']
 ```
-Mount secret as file:
-```yaml
-volumes: [{ name: secretvol, secret: { secretName: db-cred } }]
-volumeMounts: [{ name: secretvol, mountPath: /secrets, readOnly: true }]
-```
+
 
 ---
 
@@ -260,21 +275,6 @@ spec:
     command: ["sh","-c","while true; do cat /var/log/nginx/access.log /var/log/nginx/error.log; sleep 30; done"]
     volumeMounts: [{ name: shared-logs, mountPath: /var/log/nginx }]
 ```
-
----
-
-## 9) Troubleshoot Deployments (59)
-```bash
-kubectl get deploy,rs,pod -o wide
-kubectl describe deploy <name>
-kubectl describe rs -l app=<label>
-kubectl describe pod <pod>
-kubectl logs <pod> [-c container]
-kubectl get events --sort-by=.metadata.creationTimestamp
-kubectl rollout status deploy/<name>
-kubectl rollout undo deploy/<name>
-```
-Common issues: bad image, bad command/args, wrong selectors, port conflicts, PVC pending/bound.
 
 ---
 
@@ -394,25 +394,6 @@ spec:
   type: NodePort
 ```
 Use the **Redis** service created earlier, or add it as in the Redis example.
-
-### Print Env (57)
-```yaml
-apiVersion: v1
-kind: Pod
-metadata: { name: print-env }
-spec:
-  containers:
-  - name: printer
-    image: busybox:1.36
-    env:
-    - name: FOO
-      value: bar
-    command: ["sh","-c","env; sleep 3600"]
-```
-View:
-```bash
-kubectl logs print-env
-```
 
 ### Grafana minimal setup
 ```yaml
