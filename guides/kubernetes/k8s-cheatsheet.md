@@ -414,11 +414,11 @@ View:
 kubectl logs print-env
 ```
 
-### Grafana (58) minimal
+### Grafana minimal setup
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: grafana }
+metadata: { name: grafana-deployment-devops }
 spec:
   replicas: 1
   selector: { matchLabels: { app: grafana } }
@@ -435,7 +435,7 @@ kind: Service
 metadata: { name: grafana }
 spec:
   selector: { app: grafana }
-  ports: [{ port: 3000, targetPort: 3000 }]
+  ports: [{ port: 3000, targetPort: 3000, nodePort: 32000 }]
   type: NodePort
 ```
 
