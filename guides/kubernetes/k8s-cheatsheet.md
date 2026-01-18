@@ -124,9 +124,9 @@ kubectl set resources deploy/web-deploy \
 
 ---
 
-## 4) Services / Expose (56)
+## 4) Services / Expose
 ```bash
-# Expose a deployment on a NodePort (for lab access)
+# Expose a deployment on a NodePort
 kubectl expose deploy/web-deploy --port=80 --target-port=80 --type=NodePort --name web-svc
 kubectl get svc web-svc -o wide   # see nodePort
 ```
@@ -208,23 +208,33 @@ containers:
 
 ---
 
-## 7) Secrets (62) + Env (57)
+## 7) Secrets (62)
 Create secrets:
 ```bash
 kubectl create secret generic db-cred   --from-literal=USER=appuser   --from-literal=PASSWORD='S3cureP@ss!'
 ```
-Use env + valueFrom:
+
+Use envs and print them:
 ```yaml
-env:
-- name: DB_USER
-  valueFrom: { secretKeyRef: { name: db-cred, key: USER } }
-- name: DB_PASSWORD
-  valueFrom: { secretKeyRef: { name: db-cred, key: PASSWORD } }
-# Print env (57):
-containers:
-- name: printer
-  image: busybox:1.36
-  command: ["sh","-c","env; sleep 3600"]
+apiVersion: v1
+kind: Pod
+metadata:
+  name: print-envars-greeting
+spec:
+  restartPolicy: Never
+  containers:
+  - name: print-env-container
+    image: bash
+    ports:
+    - containerPort: 80
+    env:
+    - name: GREETING
+      value: "Welcome to"
+    - name: COMPANY
+      value: "MyCompany"
+    - name: GROUP
+      value: "Datacenter"
+    command: ["/bin/sh", "-c", 'echo "$(GREETING) $(COMPANY) $(GROUP)"']
 ```
 Mount secret as file:
 ```yaml
