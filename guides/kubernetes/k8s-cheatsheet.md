@@ -234,22 +234,22 @@ volumeMounts: [{ name: secretvol, mountPath: /secrets, readOnly: true }]
 
 ---
 
-## 8) Sidecar Containers (55)
+## 8) Sidecar Containers
 ```yaml
 apiVersion: v1
 kind: Pod
-metadata: { name: web-with-sidecar }
+metadata: { name: webserver }
 spec:
-  volumes: [{ name: logs, emptyDir: {} }]
+  volumes: [{ name: shared-logs, emptyDir: {} }]
   containers:
-  - name: web
-    image: nginx:alpine
-    volumeMounts: [{ name: logs, mountPath: /var/log/nginx }]
-  - name: log-shipper
-    image: busybox:1.36
-    command: ["sh","-c","tail -F /logs/access.log"]
-    volumeMounts: [{ name: logs, mountPath: /logs }]
-``}
+  - name: nginx-container
+    image: nginx:latest
+    volumeMounts: [{ name: shared-logs, mountPath: /var/log/nginx }]
+  - name: sidecar-container
+    image: ubuntu:latest
+    command: ["sh","-c","while true; do cat /var/log/nginx/access.log /var/log/nginx/error.log; sleep 30; done"]
+    volumeMounts: [{ name: shared-logs, mountPath: /var/log/nginx }]
+```
 
 ---
 
@@ -268,13 +268,13 @@ Common issues: bad image, bad command/args, wrong selectors, port conflicts, PVC
 
 ---
 
-## 10) Example: Nginx Web (56)
+## 10) Example: Nginx Web
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata: { name: nginx-deploy }
 spec:
-  replicas: 2
+  replicas: 3
   selector: { matchLabels: { app: nginx } }
   template:
     metadata: { labels: { app: nginx } }
@@ -288,13 +288,9 @@ apiVersion: v1
 kind: Service
 metadata: { name: nginx-svc }
 spec:
-  selector: { app: nginx }
-  ports: [{ port: 80, targetPort: 80 }]
   type: NodePort
-```
-```bash
-kubectl apply -f nginx.yaml
-kubectl get svc nginx-svc -o=jsonpath='{.spec.ports[0].nodePort}'
+  selector: { app: nginx }
+  ports: [{ port: 80, targetPort: 80, nodePort: 30011 }]
 ```
 
 ---
