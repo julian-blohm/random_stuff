@@ -616,8 +616,7 @@ def review_pr(
 
     context_note = None
     if _LAST_REPO_CONTEXT is None:
-        _LAST_REPO_CONTEXT = init_repo_context()
-        context_note = "Repo context was missing; init_repo_context() ran automatically."
+        context_note = "Repo context is missing; call init_repo_context() before reviewing for richer context."
 
     deep_context_files: list[dict] = []
     if mode == "deep":
