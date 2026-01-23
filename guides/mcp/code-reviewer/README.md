@@ -19,9 +19,10 @@ python main.py
 
 ## Configure in VS Code (Codex extension)
 
-Codex uses a shared config file for both the CLI and the VS Code extension:
-`~/.codex/config.toml`. You can edit it directly or use the `codex mcp` CLI.
-The IDE extension reads the same config as the CLI, so you only set it up once.
+Codex CLI and the VS Code extension share the same config file: `~/.codex/config.toml`.
+You only need to set this up once.
+
+### Quick setup (recommended)
 
 1) Ensure dependencies are available
 
@@ -29,11 +30,10 @@ The IDE extension reads the same config as the CLI, so you only set it up once.
 - `gh` authenticated in the repo you are reviewing
 - `rg` (optional, for `search_repo`)
 
-2) Add the MCP server using the CLI (recommended)
+2) Add the MCP server using the CLI
 
 ```bash
-codex mcp add code-reviewer -- \
-  python //path-to-mcp/random_stuff/guides/mcp/code-reviewer/main.py
+codex mcp add code-reviewer --   /path-to-venv/bin/python /absolute/path/to/code-reviewer/main.py
 ```
 
 Verify it’s configured:
@@ -44,22 +44,24 @@ codex mcp list
 
 3) Or edit `~/.codex/config.toml` manually
 
-Add a server entry like this:
-
 ```toml
 [mcp_servers.code-reviewer]
-command = "python"
+command = "/path-to-venv/bin/python"
 args = [
-  "/path-to-mcp/random_stuff/guides/mcp/code-reviewer/main.py",
+  "/absolute/path/to/code-reviewer/main.py",
 ]
 ```
 
 Tip: In the Codex VS Code extension, open the gear menu and choose
 `MCP settings > Open config.toml` to edit the shared config file.
 
-4) Restart VS Code or reload the Codex extension
+4) Reload the VS Code window so this session connects to the MCP server
 
-Once the server is running, the Codex tool list should include:
+Use `Developer: Reload Window` from the Command Palette.
+
+5) Verify tools are available in this window
+
+In the chat, try `server_info()` or check the tool list. You should see:
 
 - `init_repo_context`
 - `review_pr`
@@ -68,6 +70,11 @@ Once the server is running, the Codex tool list should include:
 - `read_file_at_ref`
 - `search_repo`
 
+### Common pitfalls
+
+- Running `python main.py` manually does **not** attach to the VS Code/Codex session.
+- Relative `main.py` paths can fail if the working directory differs; use absolute paths.
+- MCP tools are **per VS Code window**. If a server is running in another window, this window will not see its tools.
 ## Typical usage flow
 
 1) Call `init_repo_context()` to gather repo context.
