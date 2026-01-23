@@ -19,6 +19,8 @@ _LAST_REPO_CONTEXT: dict | None = None
 MAX_DIFF_CHARS = 120_000
 MAX_FILE_BYTES = 60_000
 MAX_DEPENDENCIES = 200
+MAX_DEPENDENCY_FULL = 40
+MAX_DEPENDENCY_EXAMPLES = 30
 MAX_DEEP_CONTEXT_FILES = 20
 
 MODE_GUIDANCE: dict[str, str] = {
@@ -301,19 +303,38 @@ def _scan_root_files(root: Path, names: list[str]) -> list[str]:
 
 def _summarize_dependencies(dep_map: dict[str, str]) -> dict:
     items = list(dep_map.items())
-    truncated = False
-    if len(items) > MAX_DEPENDENCIES:
-        items = items[:MAX_DEPENDENCIES]
-        truncated = True
-    return {"dependencies": dict(items), "truncated": truncated}
+    total = len(items)
+    if total <= MAX_DEPENDENCY_FULL:
+        return {"dependencies": dict(items), "total": total, "truncated": False}
+
+    scopes: dict[str, list[str]] = {}
+    for name, _version in items:
+        if name.startswith("@") and "/" in name:
+            scope = name.split("/", 1)[0]
+        else:
+            scope = "unscoped"
+        scopes.setdefault(scope, []).append(name)
+
+    top_scopes = sorted(scopes.items(), key=lambda entry: len(entry[1]), reverse=True)[:5]
+    scope_summary = [
+        {"scope": scope, "count": len(names), "examples": sorted(names)[:5]}
+        for scope, names in top_scopes
+    ]
+    examples = sorted(name for name, _ in items)[:MAX_DEPENDENCY_EXAMPLES]
+    return {
+        "total": total,
+        "scopes": scope_summary,
+        "examples": examples,
+        "truncated": True,
+    }
 
 
 def _summarize_list(values: list[str]) -> dict:
-    truncated = False
-    if len(values) > MAX_DEPENDENCIES:
-        values = values[:MAX_DEPENDENCIES]
-        truncated = True
-    return {"items": values, "truncated": truncated}
+    total = len(values)
+    if total <= MAX_DEPENDENCY_FULL:
+        return {"items": values, "total": total, "truncated": False}
+    examples = sorted(values)[:MAX_DEPENDENCY_EXAMPLES]
+    return {"total": total, "examples": examples, "truncated": True}
 
 
 def _detect_frameworks_and_tools(dep_names: set[str]) -> tuple[list[dict], list[str]]:

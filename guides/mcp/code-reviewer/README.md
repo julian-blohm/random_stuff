@@ -68,7 +68,7 @@ Notes:
 - `init_repo_context(max_bytes=60000)`
   - Scans common repo manifests to infer languages, frameworks, tools, package managers, build systems, and runtime versions
   - Reads config files (linters, formatters, compiler settings) to build context signals
-  - Returns lists of detected signals plus any parse errors or truncations
+  - Returns summaries of dependency sets (with scope/group hints) plus any parse errors or truncations
   - Covers popular frontend and backend frameworks (e.g., React, Angular, Vue, Next.js, Gin, Echo, Fiber, Django, FastAPI, Laravel, Symfony)
 - `review_pr(pr_number, mode)`
   - `mode` is required (`boyscout` or `deep`) so the client will prompt if missing
