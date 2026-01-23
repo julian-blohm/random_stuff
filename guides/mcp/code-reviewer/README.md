@@ -74,6 +74,7 @@ In the chat, try `server_info()` or check the tool list. You should see:
 - `review_pr`
 - `server_info`
 - `set_repo_root`
+- `fetch_docs`
 - `read_file`
 - `read_file_at_ref`
 - `search_repo`
@@ -87,9 +88,10 @@ In the chat, try `server_info()` or check the tool list. You should see:
 
 1) (If needed) call `set_repo_root("/path/to/repo")` to point the server at your workspace.
 2) Call `init_repo_context()` to gather repo context (stored for this server session).
-3) Call `review_pr(pr_number=..., mode="boyscout"|"deep")` to fetch the PR diff and metadata.
-4) The review should use the stored context to apply framework/language best practices.
-5) Use `read_file` / `read_file_at_ref` / `search_repo` for deeper checks as needed.
+3) (Optional) call `fetch_docs("https://...")` for specific official docs relevant to the change.
+4) Call `review_pr(pr_number=..., mode="boyscout"|"deep")` to fetch the PR diff and metadata.
+5) The review should use the stored context and any fetched docs to apply best practices.
+6) Use `read_file` / `read_file_at_ref` / `search_repo` for deeper checks as needed.
 
 ## Tools
 
@@ -98,16 +100,22 @@ In the chat, try `server_info()` or check the tool list. You should see:
   - Uses `gh pr view` and `gh pr diff`
   - Requires running inside a git repo (or `CODE_REVIEWER_REPO_ROOT` set)
   - Uses the most recent `init_repo_context()` output (if available) to guide best-practice checks
+  - Review guidance uses config signals and doc hints, but is not limited to linter rules
 - `init_repo_context(max_bytes=60000)`
   - Scans common repo manifests to infer languages, frameworks, tools, package managers, build systems, and runtime versions
-  - Looks at root files such as `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `pom.xml`, `build.gradle`, `composer.json`, `Gemfile`, and CI configs
+  - Reads config files (linters, formatters, tests, compiler settings) to build context signals
+  - Produces `doc_hints` based on detected frameworks/tools/languages for best-practice guidance
   - Returns lists of detected signals plus any parse errors or truncations
+  - Covers popular frontend and backend frameworks (e.g., React, Angular, Vue, Next.js, Gin, Echo, Fiber, Django, FastAPI, Laravel, Symfony)
 - `server_info()`
   - Returns the current working directory, resolved repo root, and tool versions (python/git/gh/rg)
   - Helpful for debugging missing tools or environment mismatches
 - `set_repo_root(path)`
   - Overrides the repo root for this server session (must be a git repo)
   - Useful when the server starts outside your workspace
+- `fetch_docs(url, max_bytes=60000)`
+  - Fetches documentation content from a URL and stores it for the session
+  - Use it for official docs relevant to your stack; the reviewer should cite the URL/section used
 - `read_file(path, max_bytes=60000)`
   - Reads a file from the current repo working tree
   - Useful for inspecting referenced code without leaving the review flow
@@ -122,3 +130,5 @@ In the chat, try `server_info()` or check the tool list. You should see:
 
 - You can override the repo root with `CODE_REVIEWER_REPO_ROOT` or `set_repo_root(...)`.
 - If the diff is large, it will be truncated with a marker.
+- The reviewer should use `doc_hints` to cite official documentation by name when explaining best practices.
+- If `fetch_docs` is used, cite the specific URL/section in the review.

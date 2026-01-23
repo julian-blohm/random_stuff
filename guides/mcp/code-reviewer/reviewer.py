@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import configparser
 import json
 import os
 import re
 import subprocess
 import sys
 import tomllib
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Literal
 
@@ -15,6 +18,7 @@ mcp = FastMCP("code-reviewer")
 
 _REPO_ROOT_OVERRIDE: Path | None = None
 _LAST_REPO_CONTEXT: dict | None = None
+_DOC_SOURCES: list[dict] = []
 
 MAX_DIFF_CHARS = 120_000
 MAX_FILE_BYTES = 60_000
@@ -134,6 +138,20 @@ def _resolve_git_root(path: Path) -> Path:
     return Path(root).resolve()
 
 
+def _fetch_url_text(url: str, max_bytes: int) -> tuple[str, bool]:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Only http/https URLs are supported for documentation fetches.")
+    request = urllib.request.Request(url, headers={"User-Agent": "code-reviewer-mcp"})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        data = response.read(max_bytes + 1)
+    truncated = len(data) > max_bytes
+    if truncated:
+        data = data[:max_bytes]
+    text = data.decode("utf-8", errors="replace")
+    return text, truncated
+
+
 def _truncate(text: str, limit: int) -> tuple[str, bool]:
     if len(text) <= limit:
         return text, False
@@ -251,15 +269,25 @@ def _detect_frameworks_and_tools(dep_names: set[str]) -> tuple[list[dict], list[
         "nuxt": "Nuxt",
         "svelte": "Svelte",
         "@sveltejs/kit": "SvelteKit",
+        "@angular/cli": "Angular",
         "@angular/core": "Angular",
+        "@angular/platform-browser": "Angular",
+        "qwik": "Qwik",
+        "solid-js": "SolidJS",
+        "lit": "Lit",
+        "ember-source": "Ember",
+        "gatsby": "Gatsby",
         "express": "Express",
         "fastify": "Fastify",
         "@nestjs/core": "NestJS",
         "koa": "Koa",
+        "@hapi/hapi": "Hapi",
+        "adonisjs": "AdonisJS",
+        "@adonisjs/core": "AdonisJS",
+        "@loopback/core": "LoopBack",
+        "sails": "Sails",
         "@remix-run/react": "Remix",
         "astro": "Astro",
-        "gatsby": "Gatsby",
-        "solid-js": "SolidJS",
         "electron": "Electron",
         "django": "Django",
         "flask": "Flask",
@@ -267,9 +295,31 @@ def _detect_frameworks_and_tools(dep_names: set[str]) -> tuple[list[dict], list[
         "starlette": "Starlette",
         "tornado": "Tornado",
         "pyramid": "Pyramid",
+        "falcon": "Falcon",
+        "sanic": "Sanic",
+        "quart": "Quart",
+        "django-rest-framework": "Django REST Framework",
         "rails": "Ruby on Rails",
         "laravel/framework": "Laravel",
+        "symfony/framework-bundle": "Symfony",
+        "yiisoft/yii2": "Yii",
+        "slim/slim": "Slim",
+        "cakephp/cakephp": "CakePHP",
+        "laminas/laminas-mvc": "Laminas",
+        "codeigniter4/framework": "CodeIgniter",
         "spring-boot": "Spring Boot",
+        "gin": "Gin",
+        "github.com/gin-gonic/gin": "Gin",
+        "echo": "Echo",
+        "github.com/labstack/echo/v4": "Echo",
+        "fiber": "Fiber",
+        "github.com/gofiber/fiber/v2": "Fiber",
+        "chi": "Chi",
+        "github.com/go-chi/chi/v5": "Chi",
+        "beego": "Beego",
+        "github.com/beego/beego/v2": "Beego",
+        "revel": "Revel",
+        "github.com/revel/revel": "Revel",
         "actix-web": "Actix Web",
         "rocket": "Rocket",
     }
@@ -356,6 +406,152 @@ def _extract_docker_compose_services(text: str) -> list[str]:
     return services
 
 
+def _ensure_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    if isinstance(value, str):
+        return [value]
+    return []
+
+
+def _extract_rule_keys(rules: object, limit: int = MAX_DEPENDENCIES) -> list[str]:
+    if isinstance(rules, dict):
+        keys = list(rules.keys())
+        return keys[:limit]
+    return []
+
+
+def _extract_eslint_config(data: dict) -> dict:
+    extracted: dict[str, object] = {}
+    extends = _ensure_list(data.get("extends"))
+    if extends:
+        extracted["extends"] = extends
+    plugins = _ensure_list(data.get("plugins"))
+    if plugins:
+        extracted["plugins"] = plugins
+    parser = data.get("parser")
+    if isinstance(parser, str):
+        extracted["parser"] = parser
+    rules = _extract_rule_keys(data.get("rules"))
+    if rules:
+        extracted["rules"] = _summarize_list(rules)
+    return extracted
+
+
+def _extract_stylelint_config(data: dict) -> dict:
+    extracted: dict[str, object] = {}
+    extends = _ensure_list(data.get("extends"))
+    if extends:
+        extracted["extends"] = extends
+    plugins = _ensure_list(data.get("plugins"))
+    if plugins:
+        extracted["plugins"] = plugins
+    rules = _extract_rule_keys(data.get("rules"))
+    if rules:
+        extracted["rules"] = _summarize_list(rules)
+    return extracted
+
+
+def _extract_prettier_config(data: dict) -> dict:
+    extracted: dict[str, object] = {}
+    for key in (
+        "printWidth",
+        "tabWidth",
+        "useTabs",
+        "semi",
+        "singleQuote",
+        "trailingComma",
+        "bracketSpacing",
+        "arrowParens",
+    ):
+        if key in data:
+            extracted[key] = data.get(key)
+    return extracted
+
+
+def _extract_tsconfig(data: dict) -> dict:
+    extracted: dict[str, object] = {}
+    extends = data.get("extends")
+    if isinstance(extends, str):
+        extracted["extends"] = extends
+    compiler = data.get("compilerOptions")
+    if isinstance(compiler, dict):
+        keys = [
+            "strict",
+            "noImplicitAny",
+            "strictNullChecks",
+            "noUncheckedIndexedAccess",
+            "noImplicitReturns",
+            "noFallthroughCasesInSwitch",
+            "target",
+            "module",
+            "lib",
+            "jsx",
+        ]
+        compiler_info: dict[str, object] = {}
+        for key in keys:
+            if key in compiler:
+                compiler_info[key] = compiler.get(key)
+        if compiler_info:
+            extracted["compilerOptions"] = compiler_info
+    include = data.get("include")
+    if isinstance(include, list):
+        extracted["include"] = include[:25]
+    exclude = data.get("exclude")
+    if isinstance(exclude, list):
+        extracted["exclude"] = exclude[:25]
+    return extracted
+
+
+def _extract_angular_config(data: dict) -> dict:
+    extracted: dict[str, object] = {}
+    default_project = data.get("defaultProject")
+    if isinstance(default_project, str):
+        extracted["defaultProject"] = default_project
+    projects = data.get("projects")
+    if isinstance(projects, dict):
+        extracted["projects"] = list(projects.keys())[:10]
+    schematics = data.get("schematics")
+    if isinstance(schematics, dict):
+        extracted["schematics"] = list(schematics.keys())[:10]
+    return extracted
+
+
+def _extract_editorconfig(text: str) -> dict:
+    extracted: dict[str, object] = {}
+    current_section = None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith(";"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            current_section = line[1:-1].strip()
+            continue
+        if "=" in line and current_section in ("*", "*.*", "**"):
+            key, value = [part.strip() for part in line.split("=", 1)]
+            if key in ("indent_style", "indent_size", "end_of_line", "charset", "trim_trailing_whitespace"):
+                extracted[key] = value
+    return extracted
+
+
+def _read_ini(path: Path) -> tuple[configparser.ConfigParser | None, str | None]:
+    parser = configparser.ConfigParser(interpolation=None)
+    try:
+        with path.open(encoding="utf-8") as handle:
+            parser.read_file(handle)
+        return parser, None
+    except Exception as exc:  # noqa: BLE001 - best-effort config parsing
+        return None, str(exc)
+
+
+def _extract_subset(data: dict, keys: list[str]) -> dict:
+    extracted: dict[str, object] = {}
+    for key in keys:
+        if key in data:
+            extracted[key] = data.get(key)
+    return extracted
+
+
 @mcp.tool()
 def review_pr(
     pr_number: int,
@@ -401,12 +597,17 @@ def review_pr(
         "instructions": MODE_GUIDANCE[mode],
         "context_guidance": (
             "Use repo_context to apply framework- and language-specific best practices. "
+            "Use config signals (lint/format/test/tooling configs and scripts) as evidence, "
+            "but do not rely on linters alone. "
             "If you make recommendations tied to a framework/tool, reference the official documentation name "
-            "in your reasoning (no hard-coded rules; derive from context)."
+            "in your reasoning (no hard-coded rules; derive from context). "
+            "If you use doc_sources, cite the specific doc URL/section you relied on. "
+            "Explain suggestions in clear, non-expert language."
         ),
         "review_template": REVIEW_TEMPLATE,
         "repo_context": _LAST_REPO_CONTEXT,
         "repo_context_note": context_note,
+        "doc_sources": _DOC_SOURCES,
         "pr": {
             "number": pr_data.get("number"),
             "title": pr_data.get("title"),
@@ -443,6 +644,7 @@ def server_info() -> dict:
         "cwd": str(Path.cwd()),
         "repo_root": str(_repo_root()),
         "repo_root_override": str(_REPO_ROOT_OVERRIDE) if _REPO_ROOT_OVERRIDE else None,
+        "doc_sources_count": len(_DOC_SOURCES),
         "versions": versions,
         "notes": "Useful for diagnosing missing tools or mismatched environments.",
     }
@@ -479,6 +681,7 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
         "languages": [],
         "frameworks": [],
         "tools": [],
+        "config": {},
         "package_managers": [],
         "runtime_versions": {},
         "ci_cd": [],
@@ -486,6 +689,8 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
         "lockfiles": [],
         "build_systems": [],
         "container": {},
+        "scripts": {},
+        "doc_hints": [],
     }
 
     root_files = [
@@ -494,9 +699,45 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
         "yarn.lock",
         "package-lock.json",
         "pnpm-workspace.yaml",
+        "tsconfig.json",
+        "tsconfig.base.json",
+        "tsconfig.app.json",
+        "tsconfig.spec.json",
+        "angular.json",
+        ".eslintrc",
+        ".eslintrc.json",
+        ".eslintrc.yaml",
+        ".eslintrc.yml",
+        ".eslintrc.js",
+        ".eslintrc.cjs",
+        ".eslintignore",
+        ".prettierrc",
+        ".prettierrc.json",
+        ".prettierrc.yaml",
+        ".prettierrc.yml",
+        "prettier.config.js",
+        "prettier.config.cjs",
+        ".prettierignore",
+        ".stylelintrc",
+        ".stylelintrc.json",
+        ".stylelintrc.yaml",
+        ".stylelintrc.yml",
+        ".stylelintignore",
+        ".editorconfig",
+        ".babelrc",
+        "babel.config.json",
+        ".swcrc",
+        "jest.config.js",
+        "vitest.config.ts",
+        "vitest.config.js",
+        "cypress.config.ts",
+        "playwright.config.ts",
         "pyproject.toml",
         "requirements.txt",
         "requirements-dev.txt",
+        "ruff.toml",
+        "mypy.ini",
+        ".pylintrc",
         "Pipfile",
         "Pipfile.lock",
         "poetry.lock",
@@ -542,6 +783,8 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
     runtime_versions: dict[str, str] = {}
     dependencies: dict[str, object] = {}
     container: dict[str, object] = {}
+    config_signals: dict[str, object] = {}
+    scripts: dict[str, str] = {}
 
     if (root / "package.json").exists():
         data, truncated, error = _read_json(root / "package.json", max_bytes)
@@ -572,6 +815,133 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
                 for key, value in engines.items():
                     if isinstance(value, str):
                         runtime_versions[key] = value
+            pkg_scripts = data.get("scripts")
+            if isinstance(pkg_scripts, dict):
+                script_items = list(pkg_scripts.items())
+                if len(script_items) > 50:
+                    script_items = script_items[:50]
+                scripts.update({k: str(v) for k, v in script_items})
+            eslint_config = data.get("eslintConfig")
+            if isinstance(eslint_config, dict):
+                config_signals["eslint"] = _extract_eslint_config(eslint_config)
+            prettier_config = data.get("prettier")
+            if isinstance(prettier_config, dict):
+                config_signals["prettier"] = _extract_prettier_config(prettier_config)
+            stylelint_config = data.get("stylelint")
+            if isinstance(stylelint_config, dict):
+                config_signals["stylelint"] = _extract_stylelint_config(stylelint_config)
+
+    tsconfig_info: dict[str, object] = {}
+    for ts_name in ("tsconfig.json", "tsconfig.base.json", "tsconfig.app.json", "tsconfig.spec.json"):
+        path = root / ts_name
+        if path.exists():
+            data, truncated, error = _read_json(path, max_bytes)
+            if truncated:
+                truncated_files.append(ts_name)
+            if error:
+                parse_errors[ts_name] = error
+            if isinstance(data, dict):
+                extracted = _extract_tsconfig(data)
+                if extracted:
+                    tsconfig_info[ts_name] = extracted
+    if tsconfig_info:
+        config_signals["tsconfig"] = tsconfig_info
+
+    if (root / "angular.json").exists():
+        data, truncated, error = _read_json(root / "angular.json", max_bytes)
+        if truncated:
+            truncated_files.append("angular.json")
+        if error:
+            parse_errors["angular.json"] = error
+        if isinstance(data, dict):
+            angular_info = _extract_angular_config(data)
+            if angular_info:
+                config_signals["angular"] = angular_info
+
+    for eslint_name in (".eslintrc", ".eslintrc.json"):
+        path = root / eslint_name
+        if path.exists():
+            data, truncated, error = _read_json(path, max_bytes)
+            if truncated:
+                truncated_files.append(eslint_name)
+            if error:
+                parse_errors[eslint_name] = error
+            if isinstance(data, dict):
+                extracted = _extract_eslint_config(data)
+                if extracted:
+                    config_signals["eslint"] = extracted
+            break
+
+    for prettier_name in (".prettierrc", ".prettierrc.json"):
+        path = root / prettier_name
+        if path.exists():
+            data, truncated, error = _read_json(path, max_bytes)
+            if truncated:
+                truncated_files.append(prettier_name)
+            if error:
+                parse_errors[prettier_name] = error
+            if isinstance(data, dict):
+                extracted = _extract_prettier_config(data)
+                if extracted:
+                    config_signals["prettier"] = extracted
+            break
+
+    for stylelint_name in (".stylelintrc", ".stylelintrc.json"):
+        path = root / stylelint_name
+        if path.exists():
+            data, truncated, error = _read_json(path, max_bytes)
+            if truncated:
+                truncated_files.append(stylelint_name)
+            if error:
+                parse_errors[stylelint_name] = error
+            if isinstance(data, dict):
+                extracted = _extract_stylelint_config(data)
+                if extracted:
+                    config_signals["stylelint"] = extracted
+            break
+
+    for babel_name in (".babelrc", "babel.config.json"):
+        path = root / babel_name
+        if path.exists():
+            data, truncated, error = _read_json(path, max_bytes)
+            if truncated:
+                truncated_files.append(babel_name)
+            if error:
+                parse_errors[babel_name] = error
+            if isinstance(data, dict):
+                config_signals["babel"] = _extract_subset(data, ["presets", "plugins"])
+            break
+
+    if (root / ".swcrc").exists():
+        data, truncated, error = _read_json(root / ".swcrc", max_bytes)
+        if truncated:
+            truncated_files.append(".swcrc")
+        if error:
+            parse_errors[".swcrc"] = error
+        if isinstance(data, dict):
+            config_signals["swc"] = _extract_subset(
+                data, ["jsc", "module", "sourceMaps", "minify", "env"]
+            )
+
+    if (root / ".editorconfig").exists():
+        text, truncated = _read_text(root / ".editorconfig", max_bytes)
+        if truncated:
+            truncated_files.append(".editorconfig")
+        editorconfig_info = _extract_editorconfig(text)
+        if editorconfig_info:
+            config_signals["editorconfig"] = editorconfig_info
+
+    for test_config in (
+        "jest.config.js",
+        "vitest.config.ts",
+        "vitest.config.js",
+        "cypress.config.ts",
+        "playwright.config.ts",
+    ):
+        if (root / test_config).exists():
+            config_signals.setdefault("test_configs", [])
+            if isinstance(config_signals["test_configs"], list):
+                config_signals["test_configs"].append(test_config)
 
     if (root / "pnpm-lock.yaml").exists():
         package_managers.add("pnpm")
@@ -626,6 +996,38 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
                     tools.update(found_tools)
                     if all_deps:
                         dependencies["pyproject.toml(poetry)"] = _summarize_dependencies(all_deps)
+                ruff_cfg = tool_section.get("ruff")
+                if isinstance(ruff_cfg, dict):
+                    config_signals["ruff"] = _extract_subset(
+                        ruff_cfg,
+                        [
+                            "select",
+                            "ignore",
+                            "extend-select",
+                            "extend-ignore",
+                            "line-length",
+                            "target-version",
+                        ],
+                    )
+                black_cfg = tool_section.get("black")
+                if isinstance(black_cfg, dict):
+                    config_signals["black"] = _extract_subset(
+                        black_cfg,
+                        ["line-length", "target-version", "skip-string-normalization"],
+                    )
+                mypy_cfg = tool_section.get("mypy")
+                if isinstance(mypy_cfg, dict):
+                    config_signals["mypy"] = _extract_subset(
+                        mypy_cfg,
+                        ["python_version", "strict", "ignore_missing_imports"],
+                    )
+                pytest_cfg = tool_section.get("pytest")
+                if isinstance(pytest_cfg, dict):
+                    ini_opts = pytest_cfg.get("ini_options")
+                    if isinstance(ini_opts, dict):
+                        config_signals["pytest"] = _extract_subset(
+                            ini_opts, ["addopts", "testpaths", "pythonpath"]
+                        )
 
     for req_name in ("requirements.txt", "requirements-dev.txt"):
         if (root / req_name).exists():
@@ -643,6 +1045,52 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
     if (root / "Pipfile").exists():
         package_managers.add("pipenv")
         languages.add("Python")
+
+    for ini_name in ("setup.cfg", "tox.ini", "pytest.ini", "mypy.ini"):
+        path = root / ini_name
+        if not path.exists():
+            continue
+        parser, error = _read_ini(path)
+        if error:
+            parse_errors[ini_name] = error
+            continue
+        if parser is None:
+            continue
+        if parser.has_section("flake8"):
+            config_signals.setdefault("flake8", {})
+            config_signals["flake8"] = _extract_subset(
+                dict(parser.items("flake8")), ["max-line-length", "ignore", "extend-ignore"]
+            )
+        if parser.has_section("mypy"):
+            config_signals.setdefault("mypy", {})
+            config_signals["mypy"] = _extract_subset(
+                dict(parser.items("mypy")), ["python_version", "strict", "ignore_missing_imports"]
+            )
+        if parser.has_section("tool:pytest"):
+            config_signals.setdefault("pytest", {})
+            config_signals["pytest"] = _extract_subset(
+                dict(parser.items("tool:pytest")), ["addopts", "testpaths", "pythonpath"]
+            )
+
+    if (root / "ruff.toml").exists():
+        data, truncated, error = _read_toml(root / "ruff.toml", max_bytes)
+        if truncated:
+            truncated_files.append("ruff.toml")
+        if error:
+            parse_errors["ruff.toml"] = error
+        if isinstance(data, dict):
+            lint_cfg = data.get("lint")
+            if isinstance(lint_cfg, dict):
+                config_signals["ruff"] = _extract_subset(
+                    lint_cfg,
+                    ["select", "ignore", "extend-select", "extend-ignore", "per-file-ignores"],
+                )
+            format_cfg = data.get("format")
+            if isinstance(format_cfg, dict):
+                config_signals.setdefault("ruff_format", {})
+                config_signals["ruff_format"] = _extract_subset(
+                    format_cfg, ["quote-style", "indent-style", "line-ending"]
+                )
 
     if (root / "go.mod").exists():
         text, truncated = _read_text(root / "go.mod", max_bytes)
@@ -793,11 +1241,22 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
     context["languages"] = sorted(languages)
     context["frameworks"] = frameworks
     context["tools"] = sorted(tools)
+    context["config"] = config_signals
     context["package_managers"] = sorted(package_managers)
     context["lockfiles"] = sorted(lockfiles)
     context["build_systems"] = sorted(build_systems)
     context["runtime_versions"] = runtime_versions
     context["dependencies"] = dependencies
+    context["scripts"] = scripts
+
+    doc_hints: set[str] = set()
+    doc_hints.update(context["languages"])
+    doc_hints.update(context["tools"])
+    for entry in frameworks:
+        name = entry.get("name")
+        if isinstance(name, str):
+            doc_hints.add(name)
+    context["doc_hints"] = sorted(doc_hints)
 
     payload = {
         "repo_root": str(root),
@@ -805,10 +1264,24 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
         "truncated_files": truncated_files,
         "parse_errors": parse_errors,
         "context": context,
-        "notes": "Use this context to tailor the review; call read_file for deeper inspection.",
+        "notes": (
+            "Use this context (including config signals and doc_hints) to tailor the review; "
+            "call read_file for deeper inspection."
+        ),
     }
     _LAST_REPO_CONTEXT = payload
     return payload
+
+
+@mcp.tool()
+def fetch_docs(url: str, max_bytes: int = MAX_FILE_BYTES) -> dict:
+    """
+    Fetch documentation content from a URL and store it for review context.
+    """
+    text, truncated = _fetch_url_text(url, max_bytes)
+    entry = {"url": url, "content": text, "truncated": truncated}
+    _DOC_SOURCES.append(entry)
+    return entry
 
 
 @mcp.tool()
