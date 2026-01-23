@@ -27,21 +27,49 @@ MODE_GUIDANCE: dict[str, str] = {
         "Focus on touched files and quick wins that improve clarity, safety, or maintainability.\n"
         "Do not request large refactors or broad redesigns.\n"
         "Call out small cleanup opportunities, naming clarity, minor edge cases, and missing small tests.\n"
-        "Keep the review concise and actionable."
+        "Keep the review concise and actionable.\n"
+        "Use facts over preferences; the style guide is the authority.\n"
+        "Prefer KISS/YAGNI; avoid over-engineering.\n"
+        "Call out good practices explicitly."
     ),
     "deep": (
         "Deep review mode (high confidence review of the change set).\n"
         "Focus on correctness, regressions, side effects, and best practices.\n"
         "Trace changes into referenced files if needed to confirm behavior.\n"
         "Assess whether the project remains consistent and whether breaking changes are introduced.\n"
-        "Be explicit about what is good, what is risky, and what is uncertain."
+        "Be explicit about what is good, what is risky, and what is uncertain.\n"
+        "Use facts over preferences; the style guide is the authority.\n"
+        "Prefer KISS/YAGNI; avoid over-engineering.\n"
+        "Call out good practices explicitly."
     ),
 }
+
+REVIEW_CHECKLIST = (
+    "Checklist to consider:\n"
+    "- Design: interactions make sense; integrates with the system; right time to add\n"
+    "- Functionality: matches intent and customer need; obvious bugs caught by reading\n"
+    "- Complexity: not more complex than needed; avoid over-engineering; KISS/YAGNI\n"
+    "  - Complex means hard to understand quickly or easy to break when modifying\n"
+    "- Concurrency/parallelism safety where applicable\n"
+    "- Tests: positive and negative coverage as needed (unit/integration/e2e)\n"
+    "  - Tests should fail when code is broken; simple and useful assertions\n"
+    "  - Tests are separated appropriately between methods\n"
+    "- Naming: clear and descriptive without being unreadably long\n"
+    "- Comments: necessary, clear English; explain why not what\n"
+    "  - If code needs comments to be understood, simplify it instead\n"
+    "  - Exceptions: regex and rare complex algorithms\n"
+    "- Style: follow the style guide; formatted consistently\n"
+    "  - If a change is optional, label it as non-mandatory\n"
+    "- Documentation: README/compodoc updated; task/ticket updated\n"
+    "- Review every line in context; small changes can degrade the whole file\n"
+    "- Good things: call out what is done well"
+)
 
 REVIEW_TEMPLATE = (
     "Return the review with these sections:\n"
     "- Findings (ordered by severity)\n"
     "- Questions / Unknowns\n"
+    "- Good Things\n"
     "If there are no findings, state that explicitly."
 )
 
@@ -636,6 +664,7 @@ def review_pr(
             "In deep mode, pull extra context from relevant files as needed."
         ),
         "review_template": REVIEW_TEMPLATE,
+        "review_checklist": REVIEW_CHECKLIST,
         "repo_context": _LAST_REPO_CONTEXT,
         "repo_context_note": context_note,
         "context_sources": {
