@@ -5,10 +5,7 @@ import json
 import os
 import re
 import subprocess
-import sys
 import tomllib
-import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Literal
 
@@ -18,11 +15,11 @@ mcp = FastMCP("code-reviewer")
 
 _REPO_ROOT_OVERRIDE: Path | None = None
 _LAST_REPO_CONTEXT: dict | None = None
-_DOC_SOURCES: list[dict] = []
 
 MAX_DIFF_CHARS = 120_000
 MAX_FILE_BYTES = 60_000
 MAX_DEPENDENCIES = 200
+MAX_DEEP_CONTEXT_FILES = 20
 
 MODE_GUIDANCE: dict[str, str] = {
     "boyscout": (
@@ -43,10 +40,8 @@ MODE_GUIDANCE: dict[str, str] = {
 
 REVIEW_TEMPLATE = (
     "Return the review with these sections:\n"
-    "- Summary\n"
     "- Findings (ordered by severity)\n"
     "- Questions / Unknowns\n"
-    "- Test Suggestions\n"
     "If there are no findings, state that explicitly."
 )
 
@@ -118,16 +113,6 @@ def _ensure_git_repo() -> None:
         )
 
 
-def _tool_version(label: str, cmd: list[str]) -> tuple[str, str | None]:
-    try:
-        output = _run(cmd).strip()
-        if output:
-            return label, output.splitlines()[0]
-    except CommandError as exc:
-        return label, f"unavailable ({exc})"
-    return label, "unavailable"
-
-
 def _resolve_git_root(path: Path) -> Path:
     try:
         root = _run(["git", "-C", str(path), "rev-parse", "--show-toplevel"]).strip()
@@ -136,20 +121,6 @@ def _resolve_git_root(path: Path) -> Path:
     if not root:
         raise CommandError(f"Unable to resolve git root for: {path}")
     return Path(root).resolve()
-
-
-def _fetch_url_text(url: str, max_bytes: int) -> tuple[str, bool]:
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise ValueError("Only http/https URLs are supported for documentation fetches.")
-    request = urllib.request.Request(url, headers={"User-Agent": "code-reviewer-mcp"})
-    with urllib.request.urlopen(request, timeout=20) as response:
-        data = response.read(max_bytes + 1)
-    truncated = len(data) > max_bytes
-    if truncated:
-        data = data[:max_bytes]
-    text = data.decode("utf-8", errors="replace")
-    return text, truncated
 
 
 def _truncate(text: str, limit: int) -> tuple[str, bool]:
@@ -165,6 +136,61 @@ def _read_text(path: Path, max_bytes: int) -> tuple[str, bool]:
         data = data[:max_bytes]
         truncated = True
     return data.decode("utf-8", errors="replace"), truncated
+
+
+def _collect_deep_context_files(
+    touched_files: list[str], repo_context: dict | None, max_files: int, max_bytes: int
+) -> list[dict]:
+    root = _repo_root()
+    collected: list[dict] = []
+    seen: set[str] = set()
+
+    def add_path(rel_path: str) -> None:
+        if rel_path in seen:
+            return
+        seen.add(rel_path)
+        try:
+            file_path = _safe_repo_path(rel_path)
+        except ValueError:
+            return
+        if not file_path.exists() or not file_path.is_file():
+            return
+        content, truncated = _read_text(file_path, max_bytes)
+        collected.append(
+            {"path": str(file_path.relative_to(root)), "content": content, "truncated": truncated}
+        )
+
+    for path in touched_files:
+        if len(collected) >= max_files:
+            break
+        add_path(path)
+
+    languages: set[str] = set()
+    if isinstance(repo_context, dict):
+        ctx = repo_context.get("context")
+        if isinstance(ctx, dict):
+            langs = ctx.get("languages")
+            if isinstance(langs, list):
+                languages.update(str(item) for item in langs)
+
+    extra_configs: list[str] = []
+    if "JavaScript/TypeScript" in languages:
+        extra_configs.extend(["package.json", "tsconfig.json", "angular.json", ".eslintrc.json"])
+    if "Python" in languages:
+        extra_configs.extend(["pyproject.toml", "requirements.txt"])
+    if "Go" in languages:
+        extra_configs.append("go.mod")
+    if "PHP" in languages:
+        extra_configs.append("composer.json")
+    if "Java" in languages:
+        extra_configs.extend(["pom.xml", "build.gradle", "build.gradle.kts"])
+
+    for path in extra_configs:
+        if len(collected) >= max_files:
+            break
+        add_path(path)
+
+    return collected
 
 
 def _read_json(path: Path, max_bytes: int) -> tuple[dict | None, bool, str | None]:
@@ -590,24 +616,38 @@ def review_pr(
 
     context_note = None
     if _LAST_REPO_CONTEXT is None:
-        context_note = "No repo context set. Run init_repo_context() first to capture framework/tooling context."
+        _LAST_REPO_CONTEXT = init_repo_context()
+        context_note = "Repo context was missing; init_repo_context() ran automatically."
+
+    deep_context_files: list[dict] = []
+    if mode == "deep":
+        deep_context_files = _collect_deep_context_files(
+            touched_files, _LAST_REPO_CONTEXT, MAX_DEEP_CONTEXT_FILES, MAX_FILE_BYTES
+        )
 
     return {
         "mode": mode,
         "instructions": MODE_GUIDANCE[mode],
         "context_guidance": (
             "Use repo_context to apply framework- and language-specific best practices. "
-            "Use config signals (lint/format/test/tooling configs and scripts) as evidence, "
+            "Use config signals (lint/format/tooling configs and scripts) as evidence, "
             "but do not rely on linters alone. "
-            "If you make recommendations tied to a framework/tool, reference the official documentation name "
-            "in your reasoning (no hard-coded rules; derive from context). "
-            "If you use doc_sources, cite the specific doc URL/section you relied on. "
-            "Explain suggestions in clear, non-expert language."
+            "If you are not confident, say so and ask for more context rather than guessing. "
+            "Explain suggestions in clear, non-expert language. "
+            "In deep mode, pull extra context from relevant files as needed."
         ),
         "review_template": REVIEW_TEMPLATE,
         "repo_context": _LAST_REPO_CONTEXT,
         "repo_context_note": context_note,
-        "doc_sources": _DOC_SOURCES,
+        "context_sources": {
+            "detected_files": (_LAST_REPO_CONTEXT or {}).get("detected_files", []),
+            "config_keys": list(((_LAST_REPO_CONTEXT or {}).get("context") or {}).get("config", {}).keys()),
+        },
+        "deep_context_files": deep_context_files,
+        "post_review_prompt": (
+            "If you'd like help applying fixes, tell me which findings to address and I can guide or "
+            "implement changes with you."
+        ),
         "pr": {
             "number": pr_data.get("number"),
             "title": pr_data.get("title"),
@@ -623,30 +663,7 @@ def review_pr(
         "diff": diff_text,
         "diff_truncated": diff_truncated,
         "repo_root": str(_repo_root()),
-        "notes": "Use init_repo_context to gather repo context and read_file/read_file_at_ref for deeper checks.",
-    }
-
-
-@mcp.tool()
-def server_info() -> dict:
-    """
-    Return basic environment and tool version info for debugging.
-    """
-    versions = dict(
-        [
-            ("python", sys.version.splitlines()[0]),
-            _tool_version("git", ["git", "--version"]),
-            _tool_version("gh", ["gh", "--version"]),
-            _tool_version("rg", ["rg", "--version"]),
-        ]
-    )
-    return {
-        "cwd": str(Path.cwd()),
-        "repo_root": str(_repo_root()),
-        "repo_root_override": str(_REPO_ROOT_OVERRIDE) if _REPO_ROOT_OVERRIDE else None,
-        "doc_sources_count": len(_DOC_SOURCES),
-        "versions": versions,
-        "notes": "Useful for diagnosing missing tools or mismatched environments.",
+        "notes": "Use init_repo_context to gather repo context before reviewing.",
     }
 
 
@@ -662,6 +679,21 @@ def set_repo_root(path: str) -> dict:
     return {
         "repo_root": str(_REPO_ROOT_OVERRIDE),
         "notes": "Repo root override set for this server session.",
+    }
+
+
+@mcp.tool()
+def suggest_followups() -> dict:
+    """
+    Provide follow-up options after a review (fixes, explanations, or changes).
+    """
+    return {
+        "options": [
+            "I can implement the fixes for the findings you select.",
+            "I can walk through each issue and explain the reasoning.",
+            "I can open a checklist of changes to apply manually.",
+        ],
+        "prompt": "Tell me which option you want, and which findings to focus on.",
     }
 
 
@@ -690,7 +722,6 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
         "build_systems": [],
         "container": {},
         "scripts": {},
-        "doc_hints": [],
     }
 
     root_files = [
@@ -1249,100 +1280,16 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
     context["dependencies"] = dependencies
     context["scripts"] = scripts
 
-    doc_hints: set[str] = set()
-    doc_hints.update(context["languages"])
-    doc_hints.update(context["tools"])
-    for entry in frameworks:
-        name = entry.get("name")
-        if isinstance(name, str):
-            doc_hints.add(name)
-    context["doc_hints"] = sorted(doc_hints)
-
     payload = {
         "repo_root": str(root),
         "detected_files": detected_files,
         "truncated_files": truncated_files,
         "parse_errors": parse_errors,
         "context": context,
-        "notes": (
-            "Use this context (including config signals and doc_hints) to tailor the review; "
-            "call read_file for deeper inspection."
-        ),
+        "notes": "Use this context (including config signals) to tailor the review; call read_file for deeper inspection.",
     }
     _LAST_REPO_CONTEXT = payload
     return payload
-
-
-@mcp.tool()
-def fetch_docs(url: str, max_bytes: int = MAX_FILE_BYTES) -> dict:
-    """
-    Fetch documentation content from a URL and store it for review context.
-    """
-    text, truncated = _fetch_url_text(url, max_bytes)
-    entry = {"url": url, "content": text, "truncated": truncated}
-    _DOC_SOURCES.append(entry)
-    return entry
-
-
-@mcp.tool()
-def read_file(path: str, max_bytes: int = MAX_FILE_BYTES) -> dict:
-    """
-    Read a file from the current repo working tree.
-    Returns content and whether it was truncated.
-    """
-    file_path = _safe_repo_path(path)
-    if not file_path.exists() or not file_path.is_file():
-        raise FileNotFoundError(f"File not found: {path}")
-
-    data = file_path.read_bytes()
-    truncated = False
-    if len(data) > max_bytes:
-        data = data[:max_bytes]
-        truncated = True
-
-    text = data.decode("utf-8", errors="replace")
-    return {"path": str(file_path), "content": text, "truncated": truncated}
-
-
-@mcp.tool()
-def read_file_at_ref(path: str, ref: str = "HEAD", max_bytes: int = MAX_FILE_BYTES) -> dict:
-    """
-    Read a file at a specific git ref (default: HEAD).
-    Useful for comparing pre- and post-change behavior.
-    """
-    _safe_repo_path(path)
-    content = _run(["git", "show", f"{ref}:{path}"])
-    truncated = False
-    if len(content) > max_bytes:
-        content = content[:max_bytes]
-        truncated = True
-    return {"path": path, "ref": ref, "content": content, "truncated": truncated}
-
-
-@mcp.tool()
-def search_repo(pattern: str, max_results: int = 50) -> list[dict]:
-    """
-    Search the repo with ripgrep. Returns file, line, and text matches.
-    """
-    root = _repo_root()
-    cmd = [
-        "rg",
-        "-n",
-        "--no-heading",
-        "--max-count",
-        str(max_results),
-        pattern,
-        str(root),
-    ]
-    output = _run(cmd, allow_codes={0, 1})
-    results: list[dict] = []
-    for line in output.splitlines():
-        parts = line.split(":", 2)
-        if len(parts) != 3:
-            continue
-        path, line_no, text = parts
-        results.append({"path": path, "line": int(line_no), "text": text})
-    return results
 
 
 def main() -> None:
