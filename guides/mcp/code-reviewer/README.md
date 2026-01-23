@@ -86,9 +86,10 @@ In the chat, try `server_info()` or check the tool list. You should see:
 ## Typical usage flow
 
 1) (If needed) call `set_repo_root("/path/to/repo")` to point the server at your workspace.
-2) Call `init_repo_context()` to gather repo context.
+2) Call `init_repo_context()` to gather repo context (stored for this server session).
 3) Call `review_pr(pr_number=..., mode="boyscout"|"deep")` to fetch the PR diff and metadata.
-4) Use `read_file` / `read_file_at_ref` / `search_repo` for deeper checks as needed.
+4) The review should use the stored context to apply framework/language best practices.
+5) Use `read_file` / `read_file_at_ref` / `search_repo` for deeper checks as needed.
 
 ## Tools
 
@@ -96,6 +97,7 @@ In the chat, try `server_info()` or check the tool list. You should see:
   - `mode` is required (`boyscout` or `deep`) so the client will prompt if missing
   - Uses `gh pr view` and `gh pr diff`
   - Requires running inside a git repo (or `CODE_REVIEWER_REPO_ROOT` set)
+  - Uses the most recent `init_repo_context()` output (if available) to guide best-practice checks
 - `init_repo_context(max_bytes=60000)`
   - Scans common repo manifests to infer languages, frameworks, tools, package managers, build systems, and runtime versions
   - Looks at root files such as `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `pom.xml`, `build.gradle`, `composer.json`, `Gemfile`, and CI configs

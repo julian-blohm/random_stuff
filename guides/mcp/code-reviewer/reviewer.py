@@ -14,6 +14,7 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("code-reviewer")
 
 _REPO_ROOT_OVERRIDE: Path | None = None
+_LAST_REPO_CONTEXT: dict | None = None
 
 MAX_DIFF_CHARS = 120_000
 MAX_FILE_BYTES = 60_000
@@ -391,10 +392,21 @@ def review_pr(
         elif isinstance(entry, str):
             touched_files.append(entry)
 
+    context_note = None
+    if _LAST_REPO_CONTEXT is None:
+        context_note = "No repo context set. Run init_repo_context() first to capture framework/tooling context."
+
     return {
         "mode": mode,
         "instructions": MODE_GUIDANCE[mode],
+        "context_guidance": (
+            "Use repo_context to apply framework- and language-specific best practices. "
+            "If you make recommendations tied to a framework/tool, reference the official documentation name "
+            "in your reasoning (no hard-coded rules; derive from context)."
+        ),
         "review_template": REVIEW_TEMPLATE,
+        "repo_context": _LAST_REPO_CONTEXT,
+        "repo_context_note": context_note,
         "pr": {
             "number": pr_data.get("number"),
             "title": pr_data.get("title"),
@@ -456,6 +468,7 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
     """
     Gather repo context before a review: frameworks, dependencies, tooling, and runtime hints.
     """
+    global _LAST_REPO_CONTEXT
     root = _repo_root()
     detected_files: list[str] = []
     truncated_files: list[str] = []
@@ -786,7 +799,7 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
     context["runtime_versions"] = runtime_versions
     context["dependencies"] = dependencies
 
-    return {
+    payload = {
         "repo_root": str(root),
         "detected_files": detected_files,
         "truncated_files": truncated_files,
@@ -794,6 +807,8 @@ def init_repo_context(max_bytes: int = MAX_FILE_BYTES) -> dict:
         "context": context,
         "notes": "Use this context to tailor the review; call read_file for deeper inspection.",
     }
+    _LAST_REPO_CONTEXT = payload
+    return payload
 
 
 @mcp.tool()
