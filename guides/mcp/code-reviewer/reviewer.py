@@ -69,6 +69,7 @@ REVIEW_TEMPLATE = (
     "Return the review with these sections:\n"
     "- Findings (ordered by severity)\n"
     "- Questions / Unknowns\n"
+    "- Optional Refactors / Future Improvements\n"
     "- Good Things\n"
     "If there are no findings, state that explicitly."
 )
@@ -659,6 +660,8 @@ def review_pr(
             "Use repo_context to apply framework- and language-specific best practices. "
             "Use config signals (lint/format/tooling configs and scripts) as evidence, "
             "but do not rely on linters alone. "
+            "Include non-blocking design/ergonomics improvements, even if outside the current diff. "
+            "Call out data-modeling improvements (e.g., boolean vs string enums) with rationale. "
             "If you are not confident, say so and ask for more context rather than guessing. "
             "Explain suggestions in clear, non-expert language. "
             "In deep mode, pull extra context from relevant files as needed."

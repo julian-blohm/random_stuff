@@ -56,5 +56,28 @@ After updating it, run `Developer: Reload Window` so the extension reconnects to
 4) Optionally call `suggest_followups()`.
 
 Notes:
-- `review_pr` does **not** auto-run `init_repo_context()` anymore. Call it manually when you want richer context.
+- `review_pr` auto-runs `init_repo_context()` if context is missing.
+- In deep mode, it auto-collects extra file context (up to 20 files).
 - If the diff is large, it will be truncated with a marker.
+
+## Tools
+
+- `set_repo_root(path)`
+  - Overrides the repo root for this server session (must be a git repo)
+  - Useful when the server starts outside your workspace
+- `init_repo_context(max_bytes=60000)`
+  - Scans common repo manifests to infer languages, frameworks, tools, package managers, build systems, and runtime versions
+  - Reads config files (linters, formatters, compiler settings) to build context signals
+  - Returns lists of detected signals plus any parse errors or truncations
+  - Covers popular frontend and backend frameworks (e.g., React, Angular, Vue, Next.js, Gin, Echo, Fiber, Django, FastAPI, Laravel, Symfony)
+- `review_pr(pr_number, mode)`
+  - `mode` is required (`boyscout` or `deep`) so the client will prompt if missing
+  - Uses `gh pr view` and `gh pr diff`
+  - Requires running inside a git repo (or `CODE_REVIEWER_REPO_ROOT` set)
+  - Uses the most recent `init_repo_context()` output (auto-runs it if missing)
+  - Review guidance uses config signals, but is not limited to linter rules
+  - In deep mode, it also includes extra file context from touched files and key configs (up to 20 files)
+  - Returns `context_sources` so you can see which files/configs informed the review
+  - Review output includes an “Optional Refactors / Future Improvements” section
+- `suggest_followups()`
+  - Returns options for applying fixes or continuing the review after findings are delivered
