@@ -13,6 +13,8 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("code-reviewer")
 
+_REPO_ROOT_OVERRIDE: Path | None = None
+
 MAX_DIFF_CHARS = 120_000
 MAX_FILE_BYTES = 60_000
 MAX_DEPENDENCIES = 200
@@ -65,9 +67,18 @@ def _run(cmd: list[str], cwd: Path | None = None, allow_codes: set[int] | None =
 
 
 def _repo_root() -> Path:
+    if _REPO_ROOT_OVERRIDE is not None:
+        return _REPO_ROOT_OVERRIDE
+
     env_root = os.environ.get("CODE_REVIEWER_REPO_ROOT")
     if env_root:
         return Path(env_root).expanduser().resolve()
+
+    for key in ("VSCODE_WORKSPACE_FOLDER", "WORKSPACE_FOLDER", "VSCODE_CWD"):
+        value = os.environ.get(key)
+        if value:
+            return Path(value).expanduser().resolve()
+
     try:
         root = _run(["git", "rev-parse", "--show-toplevel"]).strip()
         if root:
@@ -92,7 +103,10 @@ def _gh(args: list[str]) -> str:
 
 
 def _ensure_git_repo() -> None:
-    output = _run(["git", "rev-parse", "--is-inside-work-tree"], allow_codes={0, 1}).strip()
+    root = _repo_root()
+    output = _run(
+        ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"], allow_codes={0, 1}
+    ).strip()
     if output != "true":
         raise CommandError(
             "Not inside a git repository. Run the MCP server from a repo or set CODE_REVIEWER_REPO_ROOT."
@@ -107,6 +121,16 @@ def _tool_version(label: str, cmd: list[str]) -> tuple[str, str | None]:
     except CommandError as exc:
         return label, f"unavailable ({exc})"
     return label, "unavailable"
+
+
+def _resolve_git_root(path: Path) -> Path:
+    try:
+        root = _run(["git", "-C", str(path), "rev-parse", "--show-toplevel"]).strip()
+    except CommandError as exc:
+        raise CommandError(f"Path is not a git repository: {path}") from exc
+    if not root:
+        raise CommandError(f"Unable to resolve git root for: {path}")
+    return Path(root).resolve()
 
 
 def _truncate(text: str, limit: int) -> tuple[str, bool]:
@@ -406,8 +430,24 @@ def server_info() -> dict:
     return {
         "cwd": str(Path.cwd()),
         "repo_root": str(_repo_root()),
+        "repo_root_override": str(_REPO_ROOT_OVERRIDE) if _REPO_ROOT_OVERRIDE else None,
         "versions": versions,
         "notes": "Useful for diagnosing missing tools or mismatched environments.",
+    }
+
+
+@mcp.tool()
+def set_repo_root(path: str) -> dict:
+    """
+    Set the repo root for the current MCP server session.
+    Use this when the server isn't started in the target repo.
+    """
+    global _REPO_ROOT_OVERRIDE
+    resolved = _resolve_git_root(Path(path).expanduser())
+    _REPO_ROOT_OVERRIDE = resolved
+    return {
+        "repo_root": str(_REPO_ROOT_OVERRIDE),
+        "notes": "Repo root override set for this server session.",
     }
 
 

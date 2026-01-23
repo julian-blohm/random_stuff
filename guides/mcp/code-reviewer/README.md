@@ -55,6 +55,13 @@ args = [
 Tip: In the Codex VS Code extension, open the gear menu and choose
 `MCP settings > Open config.toml` to edit the shared config file.
 
+Optional: If the extension supports workspace variables, you can set the repo
+root dynamically with:
+
+```toml
+env = { CODE_REVIEWER_REPO_ROOT = "${workspaceFolder}" }
+```
+
 4) Reload the VS Code window so this session connects to the MCP server
 
 Use `Developer: Reload Window` from the Command Palette.
@@ -66,6 +73,7 @@ In the chat, try `server_info()` or check the tool list. You should see:
 - `init_repo_context`
 - `review_pr`
 - `server_info`
+- `set_repo_root`
 - `read_file`
 - `read_file_at_ref`
 - `search_repo`
@@ -77,9 +85,10 @@ In the chat, try `server_info()` or check the tool list. You should see:
 - MCP tools are **per VS Code window**. If a server is running in another window, this window will not see its tools.
 ## Typical usage flow
 
-1) Call `init_repo_context()` to gather repo context.
-2) Call `review_pr(pr_number=..., mode="boyscout"|"deep")` to fetch the PR diff and metadata.
-3) Use `read_file` / `read_file_at_ref` / `search_repo` for deeper checks as needed.
+1) (If needed) call `set_repo_root("/path/to/repo")` to point the server at your workspace.
+2) Call `init_repo_context()` to gather repo context.
+3) Call `review_pr(pr_number=..., mode="boyscout"|"deep")` to fetch the PR diff and metadata.
+4) Use `read_file` / `read_file_at_ref` / `search_repo` for deeper checks as needed.
 
 ## Tools
 
@@ -94,6 +103,9 @@ In the chat, try `server_info()` or check the tool list. You should see:
 - `server_info()`
   - Returns the current working directory, resolved repo root, and tool versions (python/git/gh/rg)
   - Helpful for debugging missing tools or environment mismatches
+- `set_repo_root(path)`
+  - Overrides the repo root for this server session (must be a git repo)
+  - Useful when the server starts outside your workspace
 - `read_file(path, max_bytes=60000)`
   - Reads a file from the current repo working tree
   - Useful for inspecting referenced code without leaving the review flow
@@ -106,5 +118,5 @@ In the chat, try `server_info()` or check the tool list. You should see:
 
 ## Notes
 
-- You can override the repo root with `CODE_REVIEWER_REPO_ROOT`.
+- You can override the repo root with `CODE_REVIEWER_REPO_ROOT` or `set_repo_root(...)`.
 - If the diff is large, it will be truncated with a marker.
