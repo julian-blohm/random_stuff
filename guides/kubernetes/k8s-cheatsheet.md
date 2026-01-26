@@ -177,46 +177,13 @@ spec:
 ```
 
 ### PersistentVolume + PVC
-**pv.yaml**
-```yaml
-apiVersion: v1
-kind: PersistentVolume
-metadata: { name: pv-data }
-spec:
-  capacity: { storage: 1Gi }
-  accessModes: [ReadWriteOnce]
-  persistentVolumeReclaimPolicy: Retain
-  hostPath: { path: /data/pv }        # lab-friendly; in cloud use storage class
-```
-**pvc.yaml**
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata: { name: pvc-data }
-spec:
-  accessModes: [ReadWriteOnce]
-  resources: { requests: { storage: 1Gi } }
-```
-Mount in a Pod/Deployment:
-```yaml
-volumes: [{ name: data, persistentVolumeClaim: { claimName: pvc-data } }]
-containers:
-- name: app
-  volumeMounts: [{ name: data, mountPath: /var/lib/app }]
-```
+Check example here: [PersistentVolume & PVC Example](guides/kubernetes/sample-manifest-files/httpd-with-pvc.yaml)
 
 ---
 
 ## 6) Init Containers
-```yaml
-initContainers:
-- name: init-wait
-  image: busybox:1.36
-  command: ["sh","-c","until nslookup db; do sleep 2; done"]
-containers:
-- name: app
-  image: nginx:alpine
-```
+Check example here: [InitContainer Example](guides/kubernetes/sample-manifest-files/init-container.yaml)
+
 > Init containers must **succeed** before main containers start.
 
 ---
