@@ -189,16 +189,33 @@ Check example here: [InitContainer Example](guides/kubernetes/sample-manifest-fi
 ---
 
 ## 7) Secrets
-Create secrets:
+Create secrets: (with file)
 ```bash
-kubectl create secret generic db-cred   --from-literal=USER=appuser   --from-literal=PASSWORD='S3cureP@ss!'
+kubectl create secret generic mysecret --from-file=/opt/mysecret.txt
 ```
 
 Mount secret as file:
 ```yaml
-volumes: [{ name: secretvol, secret: { secretName: db-cred } }]
-volumeMounts: [{ name: secretvol, mountPath: /secrets, readOnly: true }]
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secret-pod
+spec:
+  containers:
+    - name: secret-container
+      image: ubuntu:latest
+      command: ["sleep", "3600"]
+      volumeMounts:
+        - name: new-secret
+          mountPath: /opt/apps
+          readOnly: true
+  volumes:
+    - name: new-secret
+      secret:
+        secretName: mysecret
 ```
+ [or declarativ secret with values](guides/kubernetes/sample-manifest-files/secret-example.yaml)
+
 
 Use envs and print them:
 ```yaml
