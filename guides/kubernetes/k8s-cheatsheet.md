@@ -176,7 +176,7 @@ spec:
       volumeMounts: [{ name: volume-share, mountPath: /tmp/demo }]
 ```
 
-### PersistentVolume + PVC (60)
+### PersistentVolume + PVC
 **pv.yaml**
 ```yaml
 apiVersion: v1
@@ -207,7 +207,7 @@ containers:
 
 ---
 
-## 6) Init Containers (61)
+## 6) Init Containers
 ```yaml
 initContainers:
 - name: init-wait
@@ -221,7 +221,7 @@ containers:
 
 ---
 
-## 7) Secrets (62)
+## 7) Secrets
 Create secrets:
 ```bash
 kubectl create secret generic db-cred   --from-literal=USER=appuser   --from-literal=PASSWORD='S3cureP@ss!'
@@ -305,9 +305,9 @@ spec:
 
 ---
 
-## 11) App Samples (63–67)
+## 11) App Samples
 
-### Redis Deployment (65)
+### Redis Deployment
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -368,7 +368,7 @@ spec:
   ports: [{ port: 3306, targetPort: 3306 }]
 ```
 
-### Guestbook (67) (frontend + redis)
+### Guestbook (frontend + redis)
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
