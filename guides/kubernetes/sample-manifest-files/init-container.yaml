@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testapp-deploy-mysample
+  labels:
+    app: testapp-mysample
+spec:
+  repltestappas: 1
+  selector:
+    matchLabels:
+      app: testapp-mysample
+  template:
+    metadata:
+      labels:
+        app: testapp-mysample
+    spec:
+      volumes:
+        - name: testapp-volume-mysample
+          emptyDir: {}
+      initContainers:
+        - name: testapp-msg-mysample
+          image: ubuntu:latest
+          command:
+            - /bin/bash
+            - -c
+            - "echo 'Init Done - Welcome to xFusionCorp Industries' > /testapp/beta"
+          volumeMounts:
+            - name: testapp-volume-mysample
+              mountPath: /testapp
+      containers:
+        - name: testapp-main-mysample
+          image: ubuntu:latest
+          command:
+            - /bin/bash
+            - -c
+            - while true; do cat /testapp/beta; sleep 5; done
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: testapp-volume-mysample
+              mountPath: /testapp
